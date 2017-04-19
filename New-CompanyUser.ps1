@@ -1,4 +1,4 @@
-﻿#requires -version 3
+#requires -version 3
 <#
 .Synopsis
    Cкрипт для автоматизации заведения нового пользователя
@@ -13,16 +13,8 @@
 
 .EXAMPLE
    New-CompanyUser -SamAccountName 'IIvanov' -DisplayName 'Иван Иванов' -Department 'Маркетинг'
-
 .EXAMPLE
    New-CompanyUser 'IIvanov' 'Иван Иванов' 'Маркетинг'
-
-.INPUTS
-   Входные данные в этот командлет (при наличии)
-.OUTPUTS
-   Выходные данные из этого командлета (при наличии)
-.NOTES
-   Общие примечания
 #>
 function New-CompanyUser {
     [CmdletBinding()]
@@ -80,9 +72,9 @@ function New-CompanyUser {
     Begin
     {
         try {
-            # Импортируем модель AD
+            # Импортируем модуль AD
             Import-Module ActiveDirectory
-            # Создадим сесcию Exchange
+            # Создадим и импортируем сесcию Exchange
             $ExchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri http://mail.company.com/PowerShell/ -Authentication Kerberos
             Import-PSSession $ExchangeSession
         }
@@ -104,14 +96,13 @@ function New-CompanyUser {
             elseif (Get-ADUser * -Filter "DisplayName -eq '$DisplayName'") {
                 Write-Warning "Пользователь с именем [$DisplayName] уже существует!"
                 if ( (Read-Host "Продолжить создание пользователя с таким именем? (y/n)") -notmatch '^y$|^yes$') {
-                    Write-Host -f Yellow "Отменено пользователем."
-                    break
+                    throw "Отменено пользователем."
                 }
             }
 
             # Создадим временный пароль
             $TempPassword = New-RandomPassword
-            Write-Host -f Yellow "Пользователю будет присвоен временный пароль: [$TempPassword]"
+            #Write-Host -f Yellow "Пользователю будет присвоен временный пароль: [$TempPassword]"
 
             # Создадим юзера
             ## Избавляемся от паста-кода через Splatting!
@@ -142,6 +133,17 @@ function New-CompanyUser {
             # В идеале бы нужно включить группу AD в DistributionGroup в Exchange и добавлять только в одну группу AD.
             Add-DistributionGroupMember -Identity $Department -Member $MailboxParams.UserPrincipalName
             Add-ADGroupMember -Identity $Department -Members (Get-ADUser $SamAccountName)
+
+            Write-Host -f Green "Пользователь успешно создан:"
+            $UserData = New-Object -TypeName psobject -Property ([ordered]@{
+                Name = $DisplayName
+                User = $SamAccountName
+                Pass = $TempPassword
+                Dept = $Department
+                Mail = $MailboxParams.UserPrincipalName
+            })
+            
+            return $UserData
         }
         catch {
             Write-Error -Exception $_.Exception -Message $_.Exception.Message
@@ -172,7 +174,7 @@ function New-RandomPassword {
         }) -join ''
     }
 
-    return $Password
+    return [string]$Password
 }
 
 New-CompanyUser
